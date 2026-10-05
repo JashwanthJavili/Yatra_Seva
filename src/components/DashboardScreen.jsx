@@ -471,11 +471,7 @@ export default function DashboardScreen() {
       )}
 
       {/* Top bar */}
-      <header className="pt-4 px-6 flex items-center justify-between z-10 shrink-0">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-          <span className="w-2 h-2 rounded-full bg-emerald-600" />
-          <span className="text-[12px] font-semibold text-emerald-800">Seva Session Active</span>
-        </div>
+      <header className="pt-4 px-6 flex items-center justify-end z-10 shrink-0">
         <button
           onClick={() => setShowSignOut(true)}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-stone-200 text-stone-600 hover:text-red-700 hover:border-red-200 text-[12px] font-medium transition-all shadow-2xs cursor-pointer"

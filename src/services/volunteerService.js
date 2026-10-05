@@ -29,7 +29,10 @@ import {
   where,
   serverTimestamp,
 } from 'firebase/firestore';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import db from '../firebase/firestore';
+import { firebaseConfig } from '../firebase/config';
 import { USER_ROLES, USER_STATUSES } from '../types/user';
 
 const USERS_COLLECTION = 'users';
@@ -37,29 +40,23 @@ const USERS_COLLECTION = 'users';
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
 /**
- * Fetch all volunteer/agent profiles from Firestore.
- * Super Admin profiles are excluded from the list (they're managed separately).
- *
+ * Fetch all users (Super Admins, Admins, Volunteers) from Firestore.
  * @returns {Promise<import('../types/user').UserProfile[]>}
  */
-export async function getVolunteers() {
-  const q    = query(
-    collection(db, USERS_COLLECTION),
-    where('role', '==', USER_ROLES.VERIFICATION_AGENT),
-  );
-  const snap = await getDocs(q);
+export async function getAllUsers() {
+  const snap = await getDocs(collection(db, USERS_COLLECTION));
   const docs = snap.docs.map((d) => ({ ...d.data(), uid: d.id }));
-  // Sort client-side — avoids requiring a composite Firestore index
   return docs.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
 }
 
 /**
- * Fetch all user profiles regardless of role (for assignment dropdowns).
+ * Fetch all volunteer/agent profiles from Firestore.
  * @returns {Promise<import('../types/user').UserProfile[]>}
  */
-export async function getAllUsers() {
-  const snap = await getDocs(query(collection(db, USERS_COLLECTION), orderBy('name')));
-  return snap.docs.map((d) => ({ ...d.data(), uid: d.id }));
+export async function getVolunteers() {
+  const snap = await getDocs(collection(db, USERS_COLLECTION));
+  const docs = snap.docs.map((d) => ({ ...d.data(), uid: d.id }));
+  return docs.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
 }
 
 /**
@@ -76,27 +73,104 @@ export async function getVolunteerById(uid) {
 // ─── Create ───────────────────────────────────────────────────────────────────
 
 /**
- * Create the Firestore profile document for a new volunteer.
- *
- * PRE-CONDITION: The Firebase Authentication account for this UID must already
- * exist (created via Firebase Console or a backend Cloud Function).
- * This function ONLY writes the Firestore document — it does NOT create the
- * Auth account.
+ * Friendly error messages for user creation
+ */
+function friendlyCreationError(code) {
+  switch (code) {
+    case 'auth/email-already-in-use':
+      return 'An account with this email address already exists.';
+    case 'auth/invalid-email':
+      return 'The email address is invalid. Please check and try again.';
+    case 'auth/weak-password':
+      return 'The password is too weak. Please use at least 6 characters.';
+    case 'auth/operation-not-allowed':
+      return 'Email/password sign-in is not enabled in Firebase Console.';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Directly creates both the Firebase Authentication user account AND the Firestore
+ * profile document from within the Super Admin portal, WITHOUT signing out the
+ * currently logged-in Super Admin.
  *
  * @param {{
- *   uid: string,
  *   name: string,
- *   userId: string,
  *   email: string,
- *   role?: import('../types/user').UserRole,
- *   createdBy: string,
- * }} profileData
- * @returns {Promise<void>}
+ *   password: string,
+ *   role: import('../types/user').UserRole,
+ *   userId?: string,
+ *   createdBy?: string,
+ * }} userData
+ * @returns {Promise<import('../types/user').UserProfile>}
+ */
+export async function createPortalUser({ name, email, password, role, userId, createdBy }) {
+  if (!name?.trim()) throw new Error('Full name is required.');
+  if (!email?.trim()) throw new Error('Email address is required.');
+  if (!password || password.length < 6) throw new Error('Password must be at least 6 characters.');
+
+  const chosenRole = role || USER_ROLES.VERIFICATION_AGENT;
+  let defaultPrefix = 'VOL';
+  if (chosenRole === USER_ROLES.SUPER_ADMIN) defaultPrefix = 'ADM';
+  else if (chosenRole === USER_ROLES.ADMIN) defaultPrefix = 'MGR';
+
+  const customUserId = userId?.trim() || `${defaultPrefix}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const cleanEmail = email.trim().toLowerCase();
+
+  // 1. Create a secondary Firebase App so the Super Admin's active session is never disturbed
+  const secondaryAppName = `admin-user-creator-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+  const secondaryAuth = getAuth(secondaryApp);
+
+  let newUid = null;
+  try {
+    const userCredential = await createUserWithEmailAndPassword(
+      secondaryAuth,
+      cleanEmail,
+      password
+    );
+    newUid = userCredential.user.uid;
+
+    // 2. Write profile to Firestore with the primary db instance (authenticated as Super Admin)
+    const profileData = {
+      uid:       newUid,
+      name:      name.trim(),
+      userId:    customUserId,
+      email:     cleanEmail,
+      role:      chosenRole,
+      status:    USER_STATUSES.ACTIVE,
+      createdBy: createdBy || 'SUPER_ADMIN',
+      createdAt: serverTimestamp(),
+    };
+
+    await setDoc(doc(db, USERS_COLLECTION, newUid), profileData);
+
+    // 3. Sign out secondary auth instance
+    await signOut(secondaryAuth);
+
+    return profileData;
+  } catch (err) {
+    const friendly = friendlyCreationError(err.code);
+    if (friendly) throw new Error(friendly);
+    throw err;
+  } finally {
+    // 4. Safely clean up the secondary app instance
+    try {
+      await deleteApp(secondaryApp);
+    } catch (cleanupErr) {
+      console.warn('[createPortalUser] Cleanup secondary app error:', cleanupErr);
+    }
+  }
+}
+
+/**
+ * Legacy/Firestore-only profile creation
  */
 export async function createVolunteerProfile(profileData) {
   const { uid, name, userId, email, role, createdBy } = profileData;
 
-  if (!uid)   throw new Error('uid is required — create the Firebase Auth account first.');
+  if (!uid)   throw new Error('uid is required.');
   if (!name)  throw new Error('name is required.');
   if (!email) throw new Error('email is required.');
 
