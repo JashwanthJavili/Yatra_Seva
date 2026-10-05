@@ -316,6 +316,7 @@ export default function RegistrationListModal({
   eventId,
   eventName,
   initialTab = 'ALL',
+  lastSyncedAt,
   onClose,
 }) {
   const [activeTab, setActiveTab]       = useState(initialTab);
@@ -390,6 +391,8 @@ export default function RegistrationListModal({
     });
   }, [registrations, activeTab, search]);
 
+  const syncTimeStr = lastSyncedAt ? formatFullTime(lastSyncedAt) : null;
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#FAF7F2] font-['Poppins',sans-serif]">
       {/* Header */}
@@ -409,6 +412,7 @@ export default function RegistrationListModal({
             <p className="text-[11px] text-stone-400 mt-0.5 truncate">
               {eventName ? `${eventName} · ` : ''}
               {loading ? 'Loading…' : `${registrations.length} total records`}
+              {syncTimeStr && !loading ? ` · Last synced on ${syncTimeStr}` : ''}
             </p>
           </div>
         </div>

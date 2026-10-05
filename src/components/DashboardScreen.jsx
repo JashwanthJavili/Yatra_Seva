@@ -128,18 +128,24 @@ function AdminDashboard({ userProfile, navigate }) {
 
   useEffect(() => {
     let cancelled = false;
-    getEventStats()
-      .then((s) => { if (!cancelled) setStats(s); })
-      .catch((err) => { console.error('[Dashboard] event stats', err); if (!cancelled) setStatsError(true); });
 
     getEvents()
       .then((raw) => syncEventStatuses(raw))
       .then((synced) => {
         if (!cancelled) {
           setActiveEvents(synced.filter((e) => e.status === EVENT_STATUSES.ACTIVE));
+          setStats({
+            total:     synced.length,
+            active:    synced.filter((e) => e.status === EVENT_STATUSES.ACTIVE).length,
+            upcoming:  synced.filter((e) => e.status === EVENT_STATUSES.UPCOMING).length,
+            completed: synced.filter((e) => e.status === EVENT_STATUSES.COMPLETED).length,
+          });
         }
       })
-      .catch((err) => console.error('[Dashboard] active events', err));
+      .catch((err) => {
+        console.error('[Dashboard] load events', err);
+        if (!cancelled) setStatsError(true);
+      });
 
     return () => { cancelled = true; };
   }, []);
@@ -195,7 +201,7 @@ function AdminDashboard({ userProfile, navigate }) {
         )}
       </div>
 
-      {/* Volunteer management shortcut */}
+      {/* Team & Member management shortcut */}
       <button
         onClick={() => navigate('/volunteers')}
         className="w-full flex items-center justify-between p-4 rounded-2xl bg-white border border-stone-200/80 hover:border-amber-300 hover:shadow-sm active:scale-[0.99] transition-all cursor-pointer group"
@@ -205,8 +211,8 @@ function AdminDashboard({ userProfile, navigate }) {
             <UsersRound className="w-5 h-5 text-violet-700" />
           </div>
           <div className="text-left">
-            <p className="text-[14px] font-semibold text-stone-800">Manage Volunteers</p>
-            <p className="text-[12px] text-stone-500">Add agents &amp; assign to events</p>
+            <p className="text-[14px] font-semibold text-stone-800">Team &amp; Access Management</p>
+            <p className="text-[12px] text-stone-500">Manage all members: volunteers, admins &amp; roles</p>
           </div>
         </div>
         <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-amber-600 transition-colors" />

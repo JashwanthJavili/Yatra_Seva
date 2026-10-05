@@ -429,6 +429,47 @@ function AssignmentChip({ assignment, stats, onViewDevotees, onRemove, removing 
   );
 }
 
+// ─── Remove Volunteer Confirmation Modal ──────────────────────────────────────
+
+function RemoveVolunteerModal({ assignment, onConfirm, onClose, removing }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs font-['Poppins',sans-serif] animate-fade-in">
+      <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-stone-200/80 overflow-hidden flex flex-col p-6 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center mx-auto mb-4 border border-amber-200">
+          <UserMinus className="w-7 h-7" />
+        </div>
+
+        <h3 className="text-[17px] font-bold text-stone-900 mb-1">Unassign Volunteer?</h3>
+        <p className="text-[13px] text-stone-600 mb-2">
+          Are you sure you want to remove <strong className="text-stone-900">{assignment.volunteerName}</strong> from this event?
+        </p>
+        <p className="text-[11px] text-stone-500 bg-stone-50 p-2.5 rounded-xl border border-stone-200 mb-5">
+          They will no longer be able to scan or verify devotee QR passes for this event.
+        </p>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={removing}
+            className="flex-1 h-11 rounded-2xl border border-stone-200 bg-white text-stone-600 text-[13px] font-medium hover:bg-stone-50 cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={removing}
+            className="flex-1 h-11 rounded-2xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-[13px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+          >
+            {removing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Yes, Unassign'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 /**
@@ -442,6 +483,7 @@ export default function AssignVolunteerPanel({ eventId, assignedByUid }) {
   const [removing, setRemoving]               = useState(null);
   const [showPicker, setShowPicker]           = useState(false);
   const [viewingVolunteer, setViewingVolunteer] = useState(null); // { volunteer, stats }
+  const [confirmRemoveModal, setConfirmRemoveModal] = useState(null); // assignment object
 
   const loadAssignments = useCallback(async () => {
     setLoading(true);
@@ -468,6 +510,7 @@ export default function AssignVolunteerPanel({ eventId, assignedByUid }) {
     try {
       await removeAssignment(assignment.eventId, assignment.volunteerUid);
       setAssignments((prev) => prev.filter((a) => a.id !== assignment.id));
+      setConfirmRemoveModal(null);
     } catch (err) {
       console.error('[removeAssignment]', err);
     } finally {
@@ -487,6 +530,16 @@ export default function AssignVolunteerPanel({ eventId, assignedByUid }) {
           assignedBy={assignedByUid}
           onAssigned={() => { setShowPicker(false); loadAssignments(); }}
           onClose={() => setShowPicker(false)}
+        />
+      )}
+
+      {/* Remove Confirmation Modal */}
+      {confirmRemoveModal && (
+        <RemoveVolunteerModal
+          assignment={confirmRemoveModal}
+          onConfirm={() => handleRemove(confirmRemoveModal)}
+          onClose={() => setConfirmRemoveModal(null)}
+          removing={removing === confirmRemoveModal.id}
         />
       )}
 
@@ -561,7 +614,7 @@ export default function AssignVolunteerPanel({ eventId, assignedByUid }) {
                   assignment={a}
                   stats={statsByVol[a.volunteerUid]}
                   onViewDevotees={(vol, st) => setViewingVolunteer({ volunteer: vol, stats: st })}
-                  onRemove={handleRemove}
+                  onRemove={(assignment) => setConfirmRemoveModal(assignment)}
                   removing={removing}
                 />
               ))}

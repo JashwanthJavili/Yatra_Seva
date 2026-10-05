@@ -5,11 +5,11 @@
  * Full-screen modal sheet for creating a new event (no UI squash).
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, ArrowLeft, Calendar, MapPin, ChevronRight,
-  Loader2, AlertCircle, CalendarX2, X, Check,
+  Plus, ArrowLeft, Calendar, MapPin, ChevronRight, ChevronDown,
+  Loader2, AlertCircle, CalendarX2, X, Check, Filter,
 } from 'lucide-react';
 import { useAuth } from '../../auth/AuthProvider';
 import {
@@ -30,6 +30,14 @@ function fmt(ts) {
   if (!ts) return '—';
   const d = ts?.toDate ? ts.toDate() : new Date(ts);
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function fmtShortDateTime(ts) {
+  if (!ts) return '';
+  const d = ts?.toDate ? ts.toDate() : new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ', ' +
+         d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
 /** Returns "14 Sep 2026" for single-day or "14–16 Sep 2026" for multi-day */
@@ -327,15 +335,22 @@ function EventCard({ event, stats, onClick }) {
           </div>
 
           {/* Stats row */}
-          <div className="flex items-center gap-5 mt-3 pt-3 border-t border-stone-100">
-            {stats
-              ? <>
-                  <Stat label="Registrations" value={stats.total}    colour="text-stone-800" />
-                  <Stat label="Verified"       value={stats.verified} colour="text-emerald-700" />
-                  <Stat label="Pending"        value={stats.pending}  colour="text-amber-700" />
-                </>
-              : <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-300" />
-            }
+          <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-stone-100 flex-wrap">
+            <div className="flex items-center gap-5">
+              {stats
+                ? <>
+                    <Stat label="Registrations" value={stats.total}    colour="text-stone-800" />
+                    <Stat label="Verified"       value={stats.verified} colour="text-emerald-700" />
+                    <Stat label="Pending"        value={stats.pending}  colour="text-amber-700" />
+                  </>
+                : <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-300" />
+              }
+            </div>
+            {event.lastSyncedAt && (
+              <span className="text-[10px] text-stone-400 font-medium">
+                Synced {fmtShortDateTime(event.lastSyncedAt)}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -358,12 +373,13 @@ export default function EventsScreen() {
   const navigate         = useNavigate();
   const { firebaseUser } = useAuth();
 
-  const [events, setEvents]         = useState([]);
-  const [eventStats, setEventStats] = useState({});   // { [eventId]: RegistrationStats }
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState('');
-  const [showModal, setModal]       = useState(false);
-  const [successMsg, setSuccess]    = useState('');
+  const [events, setEvents]             = useState([]);
+  const [eventStats, setEventStats]     = useState({});   // { [eventId]: RegistrationStats }
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState('');
+  const [showModal, setModal]           = useState(false);
+  const [successMsg, setSuccess]        = useState('');
+  const [filterStatus, setFilterStatus] = useState('ALL');
 
   const loadEvents = useCallback(async () => {
     setLoading(true);
@@ -373,9 +389,11 @@ export default function EventsScreen() {
       // Auto-correct statuses based on today's date (writes back to Firestore only on changes)
       const data = await syncEventStatuses(raw);
       setEvents(data);
+      // Immediately unblock the UI so the user sees events right away
+      setLoading(false);
 
-      // Fetch registration stats for all events in parallel
-      const statsEntries = await Promise.all(
+      // Fetch fast server registration stats in parallel in background
+      Promise.all(
         data.map(async (ev) => {
           try {
             const s = await getRegistrationStats(ev.id);
@@ -384,12 +402,12 @@ export default function EventsScreen() {
             return [ev.id, { total: 0, verified: 0, pending: 0 }];
           }
         })
-      );
-      setEventStats(Object.fromEntries(statsEntries));
+      ).then((statsEntries) => {
+        setEventStats(Object.fromEntries(statsEntries));
+      });
     } catch (err) {
       console.error('[EventsScreen] load', err);
       setError('Unable to load events. Check your connection and try again.');
-    } finally {
       setLoading(false);
     }
   }, []);
@@ -403,9 +421,15 @@ export default function EventsScreen() {
     await loadEvents();
   };
 
-  // Active / upcoming counts for the summary row
-  const activeCount   = events.filter((e) => e.status === EVENT_STATUSES.ACTIVE).length;
-  const upcomingCount = events.filter((e) => e.status === EVENT_STATUSES.UPCOMING).length;
+  // Active / upcoming / completed counts for the summary row
+  const activeCount    = events.filter((e) => e.status === EVENT_STATUSES.ACTIVE).length;
+  const upcomingCount  = events.filter((e) => e.status === EVENT_STATUSES.UPCOMING).length;
+  const completedCount = events.filter((e) => e.status === EVENT_STATUSES.COMPLETED).length;
+
+  const filteredEvents = useMemo(() => {
+    if (filterStatus === 'ALL') return events;
+    return events.filter((e) => e.status === filterStatus);
+  }, [events, filterStatus]);
 
   return (
     <>
@@ -421,41 +445,66 @@ export default function EventsScreen() {
       <div className="flex flex-col min-h-screen bg-gradient-to-b from-[#FAF7F2] to-[#F3ECE0] text-stone-800 select-none font-['Poppins',sans-serif]">
 
         {/* ── Header ────────────────────────────────────────────────────── */}
-        <header className="shrink-0 pt-4 px-5 pb-3 flex items-center gap-3 bg-white/70 backdrop-blur-md border-b border-stone-200/60 sticky top-0 z-20">
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="w-10 h-10 rounded-full bg-white border border-stone-200 shadow-xs flex items-center justify-center text-stone-600 hover:text-amber-800 hover:bg-stone-50 active:scale-95 transition-all cursor-pointer shrink-0"
-            aria-label="Back to dashboard"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+        <header className="shrink-0 pt-4 px-5 pb-3 flex items-center justify-between gap-3 bg-white/70 backdrop-blur-md border-b border-stone-200/60 sticky top-0 z-20">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="w-10 h-10 rounded-full bg-white border border-stone-200 shadow-xs flex items-center justify-center text-stone-600 hover:text-amber-800 hover:bg-stone-50 active:scale-95 transition-all cursor-pointer shrink-0"
+              aria-label="Back to dashboard"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
 
-          <div className="flex-1 min-w-0">
-            <h1 className="text-[19px] font-bold text-stone-900 tracking-tight leading-tight">Yatra Events</h1>
-            <p className="text-[12px] text-stone-500 leading-tight">Schedule, coordinate &amp; verify</p>
+            <div className="min-w-0">
+              <h1 className="text-[18px] font-bold text-stone-900 tracking-tight leading-tight">Yatra Events</h1>
+              <p className="text-[12px] text-stone-500 leading-tight">Schedule, coordinate &amp; verify</p>
+            </div>
           </div>
 
           <button
             onClick={() => setModal(true)}
-            className="shrink-0 inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 active:scale-95 text-white text-[13px] font-semibold shadow-md shadow-amber-900/15 transition-all cursor-pointer"
+            className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-[12px] font-semibold shadow-xs transition-all cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>New Event</span>
           </button>
         </header>
 
-        {/* ── Summary strip ─────────────────────────────────────────────── */}
+        {/* ── Status Filter Dropdown Box with clean spacing ── */}
         {!loading && !error && events.length > 0 && (
-          <div className="shrink-0 px-5 pb-3 flex items-center gap-2">
-            <SummaryPill label="All" value={events.length} colour="bg-stone-100 text-stone-700" />
-            <SummaryPill label="Active"   value={activeCount}   colour="bg-emerald-50 text-emerald-700 border border-emerald-200" />
-            <SummaryPill label="Upcoming" value={upcomingCount} colour="bg-sky-50 text-sky-700 border border-sky-200" />
+          <div className="shrink-0 px-4 sm:px-6 pt-4 pb-1">
+            <div className="max-w-xl mx-auto flex items-center justify-between gap-3 bg-white px-3.5 py-2.5 rounded-2xl border border-stone-200/80 shadow-2xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-800 flex items-center justify-center shrink-0">
+                  <Filter className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[12px] font-semibold text-stone-600 truncate">
+                  Showing: <strong className="text-stone-900 font-bold">{filteredEvents.length}</strong> {filteredEvents.length === 1 ? 'Yatra' : 'Yatras'}
+                </span>
+              </div>
+
+              <div className="relative shrink-0">
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="h-9 pl-3 pr-8 text-[12px] sm:text-[13px] font-semibold bg-stone-50 hover:bg-stone-100 text-stone-800 rounded-xl border border-stone-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-none transition-all cursor-pointer appearance-none"
+                >
+                  <option value="ALL">All Yatras ({events.length})</option>
+                  <option value={EVENT_STATUSES.ACTIVE}>Live Active ({activeCount})</option>
+                  <option value={EVENT_STATUSES.UPCOMING}>Upcoming ({upcomingCount})</option>
+                  {completedCount > 0 && (
+                    <option value={EVENT_STATUSES.COMPLETED}>Completed ({completedCount})</option>
+                  )}
+                </select>
+                <ChevronDown className="w-4 h-4 text-stone-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
           </div>
         )}
 
         {/* ── Scrollable content ────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-5 pb-10">
-          <div className="max-w-lg mx-auto space-y-3 pt-1">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-12">
+          <div className="max-w-xl mx-auto space-y-3 pt-2">
 
             {/* Success toast */}
             {successMsg && (
@@ -516,9 +565,17 @@ export default function EventsScreen() {
               </div>
             )}
 
+            {/* Filtered empty state */}
+            {!loading && !error && events.length > 0 && filteredEvents.length === 0 && (
+              <div className="text-center py-16">
+                <p className="text-[14px] font-semibold text-stone-700">No {filterStatus.toLowerCase()} events</p>
+                <p className="text-[12px] text-stone-400 mt-1">Try selecting another filter above.</p>
+              </div>
+            )}
+
             {/* Event list */}
-            {!loading && !error && events.length > 0 &&
-              events.map((event) => (
+            {!loading && !error && filteredEvents.length > 0 &&
+              filteredEvents.map((event) => (
                 <EventCard
                   key={event.id}
                   event={event}
@@ -532,14 +589,5 @@ export default function EventsScreen() {
         </div>
       </div>
     </>
-  );
-}
-
-function SummaryPill({ label, value, colour }) {
-  return (
-    <div className={`inline-flex items-center gap-1.5 px-3 h-7 rounded-full text-[12px] font-semibold ${colour}`}>
-      <span className="font-bold">{value}</span>
-      <span className="font-medium opacity-80">{label}</span>
-    </div>
   );
 }

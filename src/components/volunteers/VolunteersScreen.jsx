@@ -1,24 +1,32 @@
 /**
  * VolunteersScreen — /volunteers
  *
- * Manage all portal users (Super Admins, Admins, Verification Agents / Volunteers).
- * Super Admin can directly create both Firebase Auth login accounts and Firestore
- * profiles within this screen in one click, without needing the Firebase Console.
+ * Team & Member Management Screen.
+ * Manage all portal users (Super Admins, Admins, Volunteers / Verification Agents).
+ * Features:
+ *  - Create login accounts & Firestore profiles directly in 1 click
+ *  - Change user roles (Volunteer ↔ Admin ↔ Super Admin)
+ *  - Activate / Suspend member accounts
+ *  - Delete member accounts safely with confirmation
+ *  - Filter by role & search by name, email, or ID
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Plus, User, Mail, Hash, ShieldCheck,
+  ArrowLeft, Plus, Mail, Hash, ShieldCheck,
   Loader2, AlertCircle, UsersRound, X, Check,
-  ToggleLeft, ToggleRight, Lock, Eye, EyeOff, KeyRound,
-  Shield, UserCheck, Search, Copy, CheckCheck,
+  ToggleLeft, ToggleRight, Eye, EyeOff, KeyRound,
+  Shield, UserCheck, Search, Copy, CheckCheck, Trash2,
+  AlertTriangle, ChevronDown, RefreshCw, UserCog,
 } from 'lucide-react';
 import { useAuth } from '../../auth/AuthProvider';
 import {
   getAllUsers,
   createPortalUser,
   updateVolunteerStatus,
+  updateUserRole,
+  deleteUserProfile,
 } from '../../services/volunteerService';
 import { getAssignmentsForUser } from '../../services/assignmentService';
 import {
@@ -43,14 +51,14 @@ function RoleBadge({ role }) {
 function StatusDot({ status }) {
   const s = USER_STATUS_STYLES[status] ?? USER_STATUS_STYLES.INACTIVE;
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${s.bg} ${s.text} ${s.border}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${s.bg} ${s.text} ${s.border}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${status === USER_STATUSES.ACTIVE ? 'bg-emerald-600' : 'bg-stone-400'}`} />
-      {status}
+      {status === USER_STATUSES.ACTIVE ? 'Active' : 'Suspended'}
     </span>
   );
 }
 
-// ─── Add User / Volunteer Modal ───────────────────────────────────────────────
+// ─── Add User Modal ───────────────────────────────────────────────────────────
 
 function AddUserModal({ onAdded, onClose, creatorUid }) {
   const [form, setForm] = useState({
@@ -122,8 +130,8 @@ function AddUserModal({ onAdded, onClose, creatorUid }) {
         {/* Header */}
         <header className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-stone-100 bg-white shrink-0">
           <div>
-            <h2 className="text-[18px] font-bold text-stone-900 leading-tight">Add New Member</h2>
-            <p className="text-[12px] text-stone-500 mt-0.5">Creates login credentials and access profile directly</p>
+            <h2 className="text-[18px] font-bold text-stone-900 leading-tight">Add New Team Member</h2>
+            <p className="text-[12px] text-stone-500 mt-0.5">Creates login credentials and access permissions</p>
           </div>
           <button
             type="button"
@@ -147,7 +155,7 @@ function AddUserModal({ onAdded, onClose, creatorUid }) {
 
             {/* Role Selection */}
             <div>
-              <label className={labelCls}>Access Role *</label>
+              <label className={labelCls}>Assign Role *</label>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   {
@@ -155,24 +163,21 @@ function AddUserModal({ onAdded, onClose, creatorUid }) {
                     label: 'Volunteer',
                     sub: 'QR & Verify',
                     icon: UserCheck,
-                    style: 'hover:border-amber-400 focus:border-amber-500',
-                    activeStyle: 'border-amber-500 bg-amber-50/70 text-amber-900',
+                    activeStyle: 'border-amber-500 bg-amber-50/70 text-amber-900 ring-2 ring-amber-500/20',
                   },
                   {
                     id: USER_ROLES.ADMIN,
                     label: 'Admin',
                     sub: 'Manage Events',
                     icon: ShieldCheck,
-                    style: 'hover:border-sky-400 focus:border-sky-500',
-                    activeStyle: 'border-sky-500 bg-sky-50/70 text-sky-900',
+                    activeStyle: 'border-sky-500 bg-sky-50/70 text-sky-900 ring-2 ring-sky-500/20',
                   },
                   {
                     id: USER_ROLES.SUPER_ADMIN,
                     label: 'Super Admin',
-                    sub: 'Full Control',
+                    sub: 'Full Access',
                     icon: Shield,
-                    style: 'hover:border-violet-400 focus:border-violet-500',
-                    activeStyle: 'border-violet-500 bg-violet-50/70 text-violet-900',
+                    activeStyle: 'border-violet-500 bg-violet-50/70 text-violet-900 ring-2 ring-violet-500/20',
                   },
                 ].map((item) => {
                   const isSelected = form.role === item.id;
@@ -183,7 +188,7 @@ function AddUserModal({ onAdded, onClose, creatorUid }) {
                       type="button"
                       onClick={() => setForm((p) => ({ ...p, role: item.id }))}
                       className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                        isSelected ? item.activeStyle : 'border-stone-200 bg-stone-50 text-stone-600'
+                        isSelected ? item.activeStyle : 'border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -203,33 +208,29 @@ function AddUserModal({ onAdded, onClose, creatorUid }) {
             {/* Full Name */}
             <div>
               <label className={labelCls}>Full Name *</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={set('name')}
-                  placeholder="e.g. Navadeep Das"
-                  className={inputCls}
-                  autoFocus
-                  required
-                />
-              </div>
+              <input
+                type="text"
+                value={form.name}
+                onChange={set('name')}
+                placeholder="e.g. Navadeep Das"
+                className={inputCls}
+                autoFocus
+                required
+              />
             </div>
 
             {/* Email & ID Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Email Address *</label>
-                <div className="relative">
-                  <input
-                    type="email"
-                    value={form.email}
-                    onChange={set('email')}
-                    placeholder="user@yatraseva.local"
-                    className={inputCls}
-                    required
-                  />
-                </div>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={set('email')}
+                  placeholder="user@yatraseva.local"
+                  className={inputCls}
+                  required
+                />
               </div>
 
               <div>
@@ -259,10 +260,10 @@ function AddUserModal({ onAdded, onClose, creatorUid }) {
                 <button
                   type="button"
                   onClick={handleGeneratePassword}
-                  className="text-[11px] font-semibold text-amber-600 hover:text-amber-700 flex items-center gap-1 cursor-pointer"
+                  className="text-[11px] font-semibold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer"
                 >
                   <KeyRound className="w-3 h-3" />
-                  <span>Generate Password</span>
+                  <span>Generate Strong Password</span>
                 </button>
               </div>
               <div className="relative">
@@ -314,7 +315,7 @@ function AddUserModal({ onAdded, onClose, creatorUid }) {
               ) : (
                 <>
                   <Check className="w-4 h-4" />
-                  <span>Create Account</span>
+                  <span>Create Member Account</span>
                 </>
               )}
             </button>
@@ -326,11 +327,224 @@ function AddUserModal({ onAdded, onClose, creatorUid }) {
   );
 }
 
+// ─── Change Role Modal ────────────────────────────────────────────────────────
+
+function ChangeRoleModal({ user, currentUid, onRoleChanged, onClose }) {
+  const [selectedRole, setSelectedRole] = useState(user.role);
+  const [saving, setSaving]             = useState(false);
+  const [error, setError]               = useState('');
+
+  const isSelf = user.uid === currentUid;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (selectedRole === user.role) {
+      onClose();
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await updateUserRole(user.uid, selectedRole);
+      onRoleChanged(user.uid, selectedRole);
+    } catch (err) {
+      console.error('[ChangeRole]', err);
+      setError(err.message || 'Failed to update role. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs font-['Poppins',sans-serif] animate-fade-in">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-stone-200/80 overflow-hidden flex flex-col">
+        
+        <header className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-stone-100 bg-white">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
+              <UserCog className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-[16px] font-bold text-stone-900 leading-tight">Change Member Role</h3>
+              <p className="text-[12px] text-stone-500">{user.name}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-500 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </header>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="flex items-center gap-2 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[12px]">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span className="font-medium">{error}</span>
+            </div>
+          )}
+
+          {isSelf && (
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[12px]">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+              <span>
+                <strong>Warning:</strong> You are changing your own role. Changing to a non-Super Admin role will restrict your management access.
+              </span>
+            </div>
+          )}
+
+          <div className="space-y-2.5">
+            {[
+              {
+                id: USER_ROLES.VERIFICATION_AGENT,
+                label: 'Volunteer (Verification Agent)',
+                desc: 'Can scan devotee QR passes and verify attendance / goodie kits for assigned events.',
+                icon: UserCheck,
+                style: 'border-amber-500 bg-amber-50/70 text-amber-950 ring-2 ring-amber-500/20',
+              },
+              {
+                id: USER_ROLES.ADMIN,
+                label: 'Admin (Event Manager)',
+                desc: 'Can create events, manage schedules, scan passes, and view event summaries.',
+                icon: ShieldCheck,
+                style: 'border-sky-500 bg-sky-50/70 text-sky-950 ring-2 ring-sky-500/20',
+              },
+              {
+                id: USER_ROLES.SUPER_ADMIN,
+                label: 'Super Admin',
+                desc: 'Full unrestricted control over all Yatras, devotee datasets, and team members.',
+                icon: Shield,
+                style: 'border-violet-500 bg-violet-50/70 text-violet-950 ring-2 ring-violet-500/20',
+              },
+            ].map((r) => {
+              const isSelected = selectedRole === r.id;
+              const Icon = r.icon;
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => setSelectedRole(r.id)}
+                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                    isSelected ? r.style : 'border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700'
+                  }`}
+                >
+                  <Icon className="w-5 h-5 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-bold leading-snug">{r.label}</p>
+                    <p className="text-[11px] opacity-80 mt-0.5 leading-relaxed">{r.desc}</p>
+                  </div>
+                  {isSelected && (
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-600 shrink-0 mt-1.5" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex gap-2.5 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 h-11 rounded-2xl border border-stone-200 bg-white text-stone-600 text-[13px] font-medium hover:bg-stone-50 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || selectedRole === user.role}
+              className="flex-1 h-11 rounded-2xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-[13px] font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update Role'}
+            </button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  );
+}
+
+// ─── Delete Confirmation Modal ───────────────────────────────────────────────
+
+function DeleteUserModal({ user, onDeleted, onClose }) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError]       = useState('');
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError('');
+    try {
+      await deleteUserProfile(user.uid);
+      onDeleted(user.uid);
+    } catch (err) {
+      console.error('[DeleteUser]', err);
+      setError('Failed to delete member profile. Please try again.');
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs font-['Poppins',sans-serif] animate-fade-in">
+      <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-red-200 overflow-hidden flex flex-col p-6 text-center">
+        
+        <div className="w-14 h-14 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4">
+          <Trash2 className="w-7 h-7" />
+        </div>
+
+        <h3 className="text-[17px] font-bold text-stone-900 mb-1">Remove Team Member?</h3>
+        <p className="text-[13px] text-stone-600 mb-2">
+          Are you sure you want to remove <strong className="text-stone-900">{user.name}</strong> ({user.email})?
+        </p>
+        <p className="text-[11px] text-red-700 bg-red-50 p-2.5 rounded-xl border border-red-200 mb-5">
+          This will remove their portal profile and all event assignments.
+        </p>
+
+        {error && (
+          <div className="mb-4 text-red-700 text-[12px] bg-red-50 p-2 rounded-lg border border-red-200">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={deleting}
+            className="flex-1 h-11 rounded-2xl border border-stone-200 bg-white text-stone-600 text-[13px] font-medium hover:bg-stone-50 cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="flex-1 h-11 rounded-2xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-[13px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+          >
+            {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Yes, Remove'}
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 // ─── User Card ────────────────────────────────────────────────────────────────
 
-function UserCard({ user, assignmentCount, onToggleStatus, toggling }) {
+function UserCard({
+  user,
+  currentUid,
+  assignmentCount,
+  onToggleStatus,
+  onChangeRole,
+  onDelete,
+  toggling,
+}) {
   const isActive = user.status === USER_STATUSES.ACTIVE;
   const [copied, setCopied] = useState(false);
+  const isSelf = user.uid === currentUid;
 
   const handleCopyEmail = () => {
     navigator.clipboard?.writeText(user.email);
@@ -348,9 +562,9 @@ function UserCard({ user, assignmentCount, onToggleStatus, toggling }) {
 
   return (
     <div className="bg-white border border-stone-200/80 rounded-2xl p-4 space-y-3 shadow-2xs hover:shadow-xs transition-shadow">
-      {/* Top row */}
+      {/* Top row: Name, ID, status toggle */}
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
             user.role === USER_ROLES.SUPER_ADMIN
               ? 'bg-violet-100 text-violet-700'
@@ -360,52 +574,86 @@ function UserCard({ user, assignmentCount, onToggleStatus, toggling }) {
           }`}>
             <Icon className="w-5 h-5" />
           </div>
-          <div>
-            <p className="text-[14px] font-semibold text-stone-900 leading-tight">{user.name}</p>
-            <p className="text-[12px] font-mono text-stone-500">{user.userId}</p>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="text-[14px] font-bold text-stone-900 leading-tight truncate">{user.name}</p>
+              {isSelf && (
+                <span className="text-[10px] font-semibold bg-stone-100 text-stone-600 px-1.5 py-0.2 rounded-md">
+                  You
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] font-mono text-stone-500 mt-0.5">{user.userId || '—'}</p>
           </div>
         </div>
+
+        {/* Status Toggle */}
         <button
           onClick={() => onToggleStatus(user.uid, isActive ? USER_STATUSES.SUSPENDED : USER_STATUSES.ACTIVE)}
-          disabled={toggling === user.uid}
-          className="shrink-0 text-stone-400 hover:text-stone-700 cursor-pointer disabled:opacity-50 transition-colors"
+          disabled={toggling === user.uid || isSelf}
+          className={`shrink-0 cursor-pointer disabled:opacity-40 transition-colors ${
+            isSelf ? 'cursor-not-allowed' : ''
+          }`}
           aria-label={isActive ? 'Suspend account' : 'Activate account'}
-          title={isActive ? 'Active — Click to Suspend' : 'Suspended — Click to Activate'}
+          title={isSelf ? 'Cannot suspend your own active account' : isActive ? 'Active — Click to Suspend' : 'Suspended — Click to Activate'}
         >
           {toggling === user.uid
-            ? <Loader2 className="w-5 h-5 animate-spin" />
+            ? <Loader2 className="w-5 h-5 animate-spin text-amber-600" />
             : isActive
-              ? <ToggleRight className="w-6 h-6 text-emerald-600" />
-              : <ToggleLeft className="w-6 h-6 text-stone-400" />
+              ? <ToggleRight className="w-6 h-6 text-emerald-600 hover:text-emerald-700" />
+              : <ToggleLeft className="w-6 h-6 text-stone-400 hover:text-stone-600" />
           }
         </button>
       </div>
 
-      {/* Meta row */}
-      <div className="flex items-center justify-between gap-1.5 text-[12px] text-stone-500">
+      {/* Meta row: Email & copy */}
+      <div className="flex items-center justify-between gap-2 text-[12px] text-stone-500 bg-stone-50/80 px-3 py-1.5 rounded-xl">
         <div className="flex items-center gap-1.5 min-w-0">
           <Mail className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-          <span className="truncate">{user.email}</span>
+          <span className="truncate font-mono text-[11px]">{user.email}</span>
         </div>
         <button
           onClick={handleCopyEmail}
-          className="p-1 rounded-md text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors cursor-pointer shrink-0"
+          className="p-1 rounded-md text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 transition-colors cursor-pointer shrink-0"
           title="Copy email"
         >
           {copied ? <CheckCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
         </button>
       </div>
 
-      {/* Badges + assignments */}
-      <div className="flex items-center justify-between pt-2 border-t border-stone-100">
+      {/* Badges + Actions bar */}
+      <div className="flex items-center justify-between pt-2 border-t border-stone-100 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <RoleBadge role={user.role} />
           <StatusDot status={user.status} />
+          {user.role === USER_ROLES.VERIFICATION_AGENT && (
+            <span className="text-[11px] text-stone-400 flex items-center gap-1 ml-1">
+              <Hash className="w-3 h-3" />
+              <span>{assignmentCount} event{assignmentCount !== 1 ? 's' : ''}</span>
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-1 text-[12px] text-stone-500">
-          <Hash className="w-3.5 h-3.5" />
-          <span className="font-semibold text-stone-700">{assignmentCount}</span>
-          <span>event{assignmentCount !== 1 ? 's' : ''}</span>
+
+        {/* Action buttons: Change Role & Delete */}
+        <div className="flex items-center gap-1.5 ml-auto">
+          <button
+            onClick={() => onChangeRole(user)}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-stone-100 hover:bg-stone-200 text-stone-700 transition-colors cursor-pointer"
+            title="Change Role"
+          >
+            <UserCog className="w-3 h-3 text-amber-700" />
+            <span>Change Role</span>
+          </button>
+
+          {!isSelf && (
+            <button
+              onClick={() => onDelete(user)}
+              className="p-1.5 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+              title="Delete Member"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -422,7 +670,9 @@ export default function VolunteersScreen() {
   const [assignmentCounts, setCounts]     = useState({}); // uid → count
   const [loading, setLoading]             = useState(true);
   const [error, setError]                 = useState('');
-  const [showModal, setModal]             = useState(false);
+  const [showAddModal, setAddModal]       = useState(false);
+  const [roleUserModal, setRoleUserModal] = useState(null); // user object to edit role
+  const [deleteUserModal, setDeleteModal] = useState(null); // user object to delete
   const [successMsg, setSuccess]          = useState('');
   const [toggling, setToggling]           = useState(null); // uid being toggled
   const [filterRole, setFilterRole]       = useState('ALL'); // 'ALL' | 'VERIFICATION_AGENT' | 'ADMIN' | 'SUPER_ADMIN'
@@ -434,22 +684,23 @@ export default function VolunteersScreen() {
     try {
       const data = await getAllUsers();
       setUsers(data);
+      setLoading(false); // Unblock UI immediately!
 
-      // Load assignment counts in parallel
+      // Load assignment counts in parallel in the background
       const counts = {};
-      await Promise.all(data.map(async (u) => {
+      Promise.all(data.map(async (u) => {
         try {
           const assignments = await getAssignmentsForUser(u.uid);
           counts[u.uid] = assignments.length;
         } catch {
           counts[u.uid] = 0;
         }
-      }));
-      setCounts(counts);
+      })).then(() => {
+        setCounts(counts);
+      });
     } catch (err) {
       console.error('[VolunteersScreen]', err);
-      setError('Unable to load users. Check your connection.');
-    } finally {
+      setError('Unable to load team members. Check your connection.');
       setLoading(false);
     }
   }, []);
@@ -457,10 +708,24 @@ export default function VolunteersScreen() {
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
   const handleAdded = (createdUser) => {
-    setModal(false);
+    setAddModal(false);
     setSuccess(`Account created for ${createdUser.name} (${USER_ROLE_LABELS[createdUser.role] || createdUser.role}).`);
     setTimeout(() => setSuccess(''), 5000);
     loadUsers();
+  };
+
+  const handleRoleChanged = (uid, newRole) => {
+    setRoleUserModal(null);
+    setUsers((prev) => prev.map((u) => u.uid === uid ? { ...u, role: newRole } : u));
+    setSuccess(`Member role updated to ${USER_ROLE_LABELS[newRole] || newRole}.`);
+    setTimeout(() => setSuccess(''), 4000);
+  };
+
+  const handleDeleted = (deletedUid) => {
+    setDeleteModal(null);
+    setUsers((prev) => prev.filter((u) => u.uid !== deletedUid));
+    setSuccess('Member account removed successfully.');
+    setTimeout(() => setSuccess(''), 4000);
   };
 
   const handleToggleStatus = async (uid, newStatus) => {
@@ -502,44 +767,67 @@ export default function VolunteersScreen() {
 
   return (
     <>
-      {showModal && (
+      {/* Add User Modal */}
+      {showAddModal && (
         <AddUserModal
           onAdded={handleAdded}
-          onClose={() => setModal(false)}
+          onClose={() => setAddModal(false)}
           creatorUid={firebaseUser?.uid}
+        />
+      )}
+
+      {/* Change Role Modal */}
+      {roleUserModal && (
+        <ChangeRoleModal
+          user={roleUserModal}
+          currentUid={firebaseUser?.uid}
+          onRoleChanged={handleRoleChanged}
+          onClose={() => setRoleUserModal(null)}
+        />
+      )}
+
+      {/* Delete User Modal */}
+      {deleteUserModal && (
+        <DeleteUserModal
+          user={deleteUserModal}
+          onDeleted={handleDeleted}
+          onClose={() => setDeleteModal(null)}
         />
       )}
 
       <div className="flex flex-col min-h-screen bg-gradient-to-b from-[#FAF7F2] to-[#F3ECE0] text-stone-800 select-none font-['Poppins',sans-serif]">
 
         {/* Top Header */}
-        <header className="shrink-0 pt-4 px-5 pb-3 flex items-center gap-3">
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="w-10 h-10 rounded-full bg-white border border-stone-200 shadow-xs flex items-center justify-center text-stone-600 hover:text-amber-800 active:scale-95 transition-all cursor-pointer shrink-0"
-            aria-label="Back"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-[18px] font-bold text-stone-900 leading-tight">Team &amp; Volunteers</h1>
-            <p className="text-[12px] text-stone-500">Manage admins, volunteers &amp; roles</p>
+        <header className="shrink-0 pt-4 px-5 pb-3 flex items-center justify-between gap-3 bg-white/70 backdrop-blur-md border-b border-stone-200/60 sticky top-0 z-20">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="w-10 h-10 rounded-full bg-white border border-stone-200 shadow-xs flex items-center justify-center text-stone-600 hover:text-amber-800 active:scale-95 transition-all cursor-pointer shrink-0"
+              aria-label="Back to Dashboard"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-[17px] font-bold text-stone-900 leading-tight">Team &amp; Access Management</h1>
+              <p className="text-[12px] text-stone-500">Manage all volunteers, administrators &amp; roles</p>
+            </div>
           </div>
+
           <button
-            onClick={() => setModal(true)}
-            className="shrink-0 inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 active:scale-95 text-white text-[13px] font-semibold shadow-sm transition-all cursor-pointer"
+            onClick={() => setAddModal(true)}
+            className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-[12px] font-semibold shadow-xs transition-all cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>Add Member</span>
           </button>
         </header>
 
-        {/* Search & Filter Bar */}
-        <div className="px-5 pb-2">
-          <div className="max-w-lg mx-auto space-y-2.5">
+        {/* Search & Role Filter Row */}
+        <div className="px-4 sm:px-6 pt-4 pb-2">
+          <div className="max-w-xl mx-auto flex items-center gap-2">
             
             {/* Search Input */}
-            <div className="relative">
+            <div className="relative flex-1 min-w-0">
               <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
@@ -551,49 +839,34 @@ export default function VolunteersScreen() {
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
 
-            {/* Filter Tabs */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-              {[
-                { id: 'ALL', label: 'All', count: roleCounts.ALL },
-                { id: USER_ROLES.VERIFICATION_AGENT, label: 'Volunteers', count: roleCounts.VERIFICATION_AGENT },
-                { id: USER_ROLES.ADMIN, label: 'Admins', count: roleCounts.ADMIN },
-                { id: USER_ROLES.SUPER_ADMIN, label: 'Super Admins', count: roleCounts.SUPER_ADMIN },
-              ].map((tab) => {
-                const isSelected = filterRole === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setFilterRole(tab.id)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all cursor-pointer shrink-0 ${
-                      isSelected
-                        ? 'bg-amber-600 text-white shadow-xs'
-                        : 'bg-white/80 border border-stone-200/80 text-stone-600 hover:bg-white'
-                    }`}
-                  >
-                    <span>{tab.label}</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                      isSelected ? 'bg-amber-700/60 text-white' : 'bg-stone-100 text-stone-500'
-                    }`}>
-                      {tab.count}
-                    </span>
-                  </button>
-                );
-              })}
+            {/* Role Filter Dropdown Box */}
+            <div className="relative shrink-0">
+              <select
+                value={filterRole}
+                onChange={(e) => setFilterRole(e.target.value)}
+                className="h-10 pl-3 pr-8 text-[12px] sm:text-[13px] font-semibold bg-white hover:bg-stone-50 text-stone-800 rounded-xl border border-stone-200/90 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-none transition-all cursor-pointer appearance-none shadow-2xs"
+              >
+                <option value="ALL">All Roles ({roleCounts.ALL})</option>
+                <option value={USER_ROLES.VERIFICATION_AGENT}>Volunteers ({roleCounts.VERIFICATION_AGENT})</option>
+                <option value={USER_ROLES.ADMIN}>Admins ({roleCounts.ADMIN})</option>
+                <option value={USER_ROLES.SUPER_ADMIN}>Super Admins ({roleCounts.SUPER_ADMIN})</option>
+              </select>
+              <ChevronDown className="w-4 h-4 text-stone-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
 
           </div>
         </div>
 
         {/* Content List */}
-        <div className="flex-1 overflow-y-auto px-5 pb-10">
-          <div className="max-w-lg mx-auto space-y-3 pt-1">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-12">
+          <div className="max-w-xl mx-auto space-y-3 pt-1">
 
             {successMsg && (
               <div className="flex items-center gap-2 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[12px] font-medium animate-fade-in">
@@ -638,7 +911,7 @@ export default function VolunteersScreen() {
                 </div>
                 {!searchQuery && (
                   <button
-                    onClick={() => setModal(true)}
+                    onClick={() => setAddModal(true)}
                     className="inline-flex items-center gap-1.5 px-5 h-10 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[13px] font-semibold cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />Add Member
@@ -653,13 +926,23 @@ export default function VolunteersScreen() {
                   <p className="text-[11px] font-semibold text-stone-400 uppercase tracking-wider">
                     {filteredUsers.length} member{filteredUsers.length !== 1 ? 's' : ''}
                   </p>
+                  <button
+                    onClick={loadUsers}
+                    className="text-[11px] text-stone-400 hover:text-amber-700 flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Refresh</span>
+                  </button>
                 </div>
                 {filteredUsers.map((u) => (
                   <UserCard
                     key={u.uid}
                     user={u}
+                    currentUid={firebaseUser?.uid}
                     assignmentCount={assignmentCounts[u.uid] ?? 0}
                     onToggleStatus={handleToggleStatus}
+                    onChangeRole={(user) => setRoleUserModal(user)}
+                    onDelete={(user) => setDeleteModal(user)}
                     toggling={toggling}
                   />
                 ))}

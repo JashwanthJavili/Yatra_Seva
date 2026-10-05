@@ -15,11 +15,14 @@ import {
   doc,
   getDocs,
   getDoc,
+  updateDoc,
   onSnapshot,
   writeBatch,
   serverTimestamp,
   query,
   limit,
+  where,
+  getCountFromServer,
 } from 'firebase/firestore';
 import db from '../firebase/firestore';
 import { REGISTRATION_STATUS } from '../types/registration';
@@ -170,6 +173,18 @@ export async function importRegistrations(eventId, qrIdentifierColumn, validSour
     }
   }
 
+  // Update parent event document with sync metadata
+  try {
+    await updateDoc(doc(db, 'events', eventId), {
+      lastSyncedAt: serverTimestamp(),
+      lastSyncedBy: importedByUid || null,
+      qrIdentifierColumn,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (syncUpdateErr) {
+    console.warn('[importRegistrations] Could not update event sync timestamp:', syncUpdateErr);
+  }
+
   return result;
 }
 
@@ -189,19 +204,34 @@ export async function importRegistrations(eventId, qrIdentifierColumn, validSour
  * @returns {Promise<RegistrationStats>}
  */
 export async function getRegistrationStats(eventId) {
-  const snap = await getDocs(regCol(eventId));
-  let total = 0, verified = 0, pending = 0, cancelled = 0, goodiesIssued = 0;
+  try {
+    const colRef = regCol(eventId);
+    const [totalSnap, verifiedSnap] = await Promise.all([
+      getCountFromServer(colRef),
+      getCountFromServer(query(colRef, where('systemData.status', '==', REGISTRATION_STATUS.VERIFIED))),
+    ]);
 
-  snap.forEach((d) => {
-    const sys = d.data()?.systemData ?? {};
-    total++;
-    if (sys.status === REGISTRATION_STATUS.VERIFIED)  verified++;
-    if (sys.status === REGISTRATION_STATUS.PENDING)   pending++;
-    if (sys.status === REGISTRATION_STATUS.CANCELLED) cancelled++;
-    if (sys.goodieKitIssued) goodiesIssued++;
-  });
+    const total = totalSnap.data().count;
+    const verified = verifiedSnap.data().count;
+    const pending = Math.max(0, total - verified);
 
-  return { total, verified, pending, cancelled, goodiesIssued };
+    return { total, verified, pending, cancelled: 0, goodiesIssued: verified };
+  } catch (err) {
+    // Fallback if count aggregation fails
+    const snap = await getDocs(regCol(eventId));
+    let total = 0, verified = 0, pending = 0, cancelled = 0, goodiesIssued = 0;
+
+    snap.forEach((d) => {
+      const sys = d.data()?.systemData ?? {};
+      total++;
+      if (sys.status === REGISTRATION_STATUS.VERIFIED)  verified++;
+      else if (sys.status === REGISTRATION_STATUS.PENDING)   pending++;
+      else if (sys.status === REGISTRATION_STATUS.CANCELLED) cancelled++;
+      if (sys.goodieKitIssued) goodiesIssued++;
+    });
+
+    return { total, verified, pending, cancelled, goodiesIssued };
+  }
 }
 
 /**

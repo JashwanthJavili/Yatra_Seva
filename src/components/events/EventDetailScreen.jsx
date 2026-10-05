@@ -41,6 +41,20 @@ function fmtShort(ts) {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+function fmtDateTime(ts) {
+  if (!ts) return null;
+  const d = ts?.toDate ? ts.toDate() : new Date(ts);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
 /** "Monday, 14 September 2026" for single-day; "14 September – 16 September 2026" for multi-day */
 function formatDateRange(event) {
   const startTs = resolveStartDate(event);
@@ -253,23 +267,51 @@ function StatCard({ icon: Icon, label, value, colour, loading, onClick }) {
 
 // ─── Registration Data Section ────────────────────────────────────────────────
 
-function RegistrationDataSection({ eventId, stats, statsLoading, onOpenImport, onSelectStat }) {
+function RegistrationDataSection({ eventId, stats, statsLoading, lastSyncedAt, onOpenImport, onSelectStat }) {
+  const hasData = (stats?.total ?? 0) > 0;
+  const syncTimeStr = fmtDateTime(lastSyncedAt);
+
   return (
     <div className="space-y-3">
       {/* Section header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
           <p className="text-[12px] font-semibold text-stone-500 uppercase tracking-wider">
             Registration Data
           </p>
-          <p className="text-[11px] text-stone-400">Click any card to view records</p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className="text-[11px] text-stone-400">Click card to view records</p>
+            {hasData && syncTimeStr && (
+              <>
+                <span className="text-stone-300 text-[10px]">•</span>
+                <span className="text-[11px] text-stone-500 font-medium flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-amber-600/80 shrink-0" />
+                  <span>Last synced on <strong className="font-semibold text-stone-700">{syncTimeStr}</strong></span>
+                </span>
+              </>
+            )}
+          </div>
         </div>
         <button
           onClick={onOpenImport}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[12px] font-semibold cursor-pointer transition-colors"
+          className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold cursor-pointer transition-colors shrink-0
+            ${hasData
+              ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300'
+              : 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs'
+            }`}
+          title={hasData ? "Update or sync registration records from Excel" : "Upload an Excel file"}
         >
-          <FileSpreadsheet className="w-3.5 h-3.5" />
-          Upload Excel
+          {hasData ? (
+            <>
+              <RefreshCw className="w-3.5 h-3.5 text-amber-700" />
+              Update / Sync Excel
+            </>
+          ) : (
+            <>
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              Upload Excel
+            </>
+          )}
         </button>
       </div>
 
@@ -390,8 +432,9 @@ export default function EventDetailScreen() {
   };
 
   const handleImported = () => {
-    // Refresh stats after import
+    // Refresh stats and event metadata after import
     loadStats();
+    loadEvent();
   };
 
   const canManage = role === USER_ROLES.SUPER_ADMIN || role === USER_ROLES.ADMIN;
@@ -434,6 +477,7 @@ export default function EventDetailScreen() {
           eventId={eventId}
           eventName={event.name}
           existingQrColumn={event.qrIdentifierColumn ?? null}
+          existingStats={regStats}
           onClose={() => setShowImport(false)}
           onImported={handleImported}
         />
@@ -445,6 +489,7 @@ export default function EventDetailScreen() {
           eventId={eventId}
           eventName={event?.name}
           initialTab={regListTab}
+          lastSyncedAt={event?.lastSyncedAt}
           onClose={() => setShowRegList(false)}
         />
       )}
@@ -487,7 +532,7 @@ export default function EventDetailScreen() {
         </header>
 
         {/* Scrollable content */}
-        <div className="flex-1 px-6 pt-5 pb-10 overflow-y-auto max-w-lg mx-auto w-full space-y-5">
+        <div className="flex-1 px-4 sm:px-6 pt-5 pb-12 overflow-y-auto max-w-xl mx-auto w-full space-y-5">
 
           {/* Success toast */}
           {successMsg && (
@@ -566,6 +611,7 @@ export default function EventDetailScreen() {
               eventId={eventId}
               stats={regStats}
               statsLoading={statsLoading}
+              lastSyncedAt={event?.lastSyncedAt}
               onOpenImport={() => setShowImport(true)}
               onSelectStat={(tab) => {
                 setRegListTab(tab);

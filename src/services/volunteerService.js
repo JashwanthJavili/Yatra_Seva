@@ -25,6 +25,8 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
+  writeBatch,
   query,
   where,
   serverTimestamp,
@@ -214,3 +216,46 @@ export async function updateVolunteerProfile(uid, updates) {
     updatedAt: serverTimestamp(),
   });
 }
+
+/**
+ * Change a user's role (SUPER_ADMIN / ADMIN / VERIFICATION_AGENT).
+ * @param {string} uid
+ * @param {import('../types/user').UserRole} role
+ */
+export async function updateUserRole(uid, role) {
+  if (!uid) throw new Error('User UID is required.');
+  if (!Object.values(USER_ROLES).includes(role)) {
+    throw new Error('Invalid role specified.');
+  }
+  await updateDoc(doc(db, USERS_COLLECTION, uid), {
+    role,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Permanently delete a user profile from Firestore and remove their event assignments.
+ * @param {string} uid
+ */
+export async function deleteUserProfile(uid) {
+  if (!uid) throw new Error('User UID is required.');
+
+  // 1. Delete user profile document
+  await deleteDoc(doc(db, USERS_COLLECTION, uid));
+
+  // 2. Clean up any event assignments for this user
+  try {
+    const q = query(collection(db, 'eventAssignments'), where('volunteerUid', '==', uid));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const batch = writeBatch(db);
+      snap.docs.forEach((d) => {
+        batch.delete(d.ref);
+      });
+      await batch.commit();
+    }
+  } catch (err) {
+    console.warn('[deleteUserProfile] Could not clean event assignments:', err);
+  }
+}
+
