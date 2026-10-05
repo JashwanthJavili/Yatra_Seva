@@ -146,16 +146,26 @@ function AdminDashboard({ userProfile, navigate }) {
 
   return (
     <div className="space-y-5">
-      {/* Identity */}
-      <div className="text-center pt-2">
-        <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shadow-xs">
-          <ShieldCheck className="w-7 h-7 text-amber-600" />
+      {/* ── Simple Devotional Header ──────────────────────────────────────── */}
+      <div className="pt-2 pb-1">
+        <p className="text-[13px] font-semibold text-amber-800 tracking-wide mb-1">
+          Hare Krishna 🙏
+        </p>
+        <h1 className="text-[22px] sm:text-[24px] font-bold text-stone-900 tracking-tight leading-tight">
+          Yatra Seva Portal
+        </h1>
+        <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-900 border border-amber-200">
+            Super Admin
+          </span>
+          <span className="text-[13px] text-stone-600 font-medium">
+            {userProfile?.name || 'Admin'}
+          </span>
+          <span className="text-stone-300">•</span>
+          <span className="text-[12px] font-mono text-stone-500">
+            {userProfile?.userId || userProfile?.email}
+          </span>
         </div>
-        <div className="inline-flex items-center gap-1 text-[12px] font-semibold text-amber-700 uppercase tracking-widest mb-1">
-          <Sparkles className="w-3.5 h-3.5" /><span>Super Admin</span>
-        </div>
-        <h1 className="text-[22px] font-bold text-stone-900 tracking-tight">Yatra Verification Dashboard</h1>
-        <p className="mt-1 text-[12px] text-stone-500 font-mono">{userProfile?.email || userProfile?.userId || '—'}</p>
       </div>
 
       {/* ── Active events highlight (only shows if active events exist) ── */}
@@ -269,16 +279,26 @@ function AgentDashboard({ userProfile, firebaseUser, navigate }) {
 
   return (
     <div className="space-y-5">
-      {/* Identity */}
-      <div className="text-center pt-2">
-        <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shadow-xs">
-          <ShieldCheck className="w-7 h-7 text-emerald-600" />
+      {/* ── Simple Devotional Header ──────────────────────────────────────── */}
+      <div className="pt-2 pb-1">
+        <p className="text-[13px] font-semibold text-emerald-800 tracking-wide mb-1">
+          Hare Krishna 🙏
+        </p>
+        <h1 className="text-[22px] sm:text-[24px] font-bold text-stone-900 tracking-tight leading-tight">
+          Seva Verification Portal
+        </h1>
+        <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-900 border border-emerald-200">
+            Volunteer Agent
+          </span>
+          <span className="text-[13px] text-stone-600 font-medium">
+            {userProfile?.name || 'Devotee'}
+          </span>
+          <span className="text-stone-300">•</span>
+          <span className="text-[12px] font-mono text-stone-500">
+            {userProfile?.userId || userProfile?.email}
+          </span>
         </div>
-        <div className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 uppercase tracking-widest mb-1">
-          <Sparkles className="w-3.5 h-3.5" /><span>Verification Agent</span>
-        </div>
-        <h1 className="text-[20px] font-bold text-stone-900 tracking-tight">Seva Verification Portal</h1>
-        <p className="mt-1 text-[12px] text-stone-500 font-mono">{userProfile?.name || userProfile?.userId || '—'}</p>
       </div>
 
       {/* ── Active assigned events highlight (only shows if active) ────── */}
@@ -471,12 +491,21 @@ export default function DashboardScreen() {
       )}
 
       {/* Top bar */}
-      <header className="pt-4 px-6 flex items-center justify-end z-10 shrink-0">
+      <header className="pt-4 px-6 flex items-center justify-between z-10 shrink-0 max-w-lg mx-auto w-full">
+        {/* Left Branding */}
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100/70 border border-amber-200 text-amber-900">
+          <span className="text-[11px] font-semibold tracking-wider uppercase">
+            Yatra Seva
+          </span>
+        </div>
+
+        {/* Right Sign Out */}
         <button
           onClick={() => setShowSignOut(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-stone-200 text-stone-600 hover:text-red-700 hover:border-red-200 text-[12px] font-medium transition-all shadow-2xs cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-stone-200 text-stone-600 hover:text-red-700 hover:border-red-200 text-[12px] font-medium transition-all cursor-pointer"
         >
-          <LogOut className="w-3.5 h-3.5" /><span>Sign Out</span>
+          <LogOut className="w-3.5 h-3.5" />
+          <span>Sign Out</span>
         </button>
       </header>
 

@@ -452,29 +452,34 @@ export default function EventDetailScreen() {
       <div className="flex flex-col min-h-screen bg-gradient-to-b from-[#FAF7F2] to-[#F3ECE0] text-stone-800 select-none font-['Poppins',sans-serif]">
 
         {/* Header */}
-        <header className="pt-4 px-6 flex items-center justify-between shrink-0 z-10">
+        <header className="shrink-0 pt-4 px-6 pb-3 flex items-center justify-between bg-white/70 backdrop-blur-md border-b border-stone-200/60 sticky top-0 z-20">
           <button
             onClick={handleBack}
-            className="w-10 h-10 rounded-full bg-white border border-stone-200 shadow-xs flex items-center justify-center text-stone-600 hover:text-amber-800 hover:bg-stone-50 active:scale-95 transition-all cursor-pointer"
+            className="w-10 h-10 rounded-full bg-white border border-stone-200 shadow-xs flex items-center justify-center text-stone-600 hover:text-amber-800 hover:bg-stone-50 active:scale-95 transition-all cursor-pointer shrink-0"
             aria-label={canManage ? "Back to events" : "Back to dashboard"}
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
 
-          <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-widest">
-            Event Details
-          </span>
+          <div className="text-center px-2 min-w-0">
+            <span className="text-[11px] font-bold text-amber-800 uppercase tracking-widest block">
+              Yatra Overview
+            </span>
+            <span className="text-[13px] font-semibold text-stone-800 truncate block max-w-[180px] sm:max-w-xs">
+              {event?.name || 'Event Details'}
+            </span>
+          </div>
 
           {canManage ? (
             <button
               onClick={() => setEditing((v) => !v)}
-              className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-[12px] font-semibold border transition-all cursor-pointer
+              className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-[12px] font-semibold border transition-all cursor-pointer shadow-2xs shrink-0
                 ${editing
-                  ? 'bg-stone-100 text-stone-700 border-stone-200'
+                  ? 'bg-stone-100 text-stone-700 border-stone-300 hover:bg-stone-200'
                   : 'bg-white text-stone-700 border-stone-200 hover:border-amber-400 hover:text-amber-800'
                 }`}
             >
-              {editing ? <><X className="w-3.5 h-3.5" />Cancel</> : <><Edit2 className="w-3.5 h-3.5" />Edit</>}
+              {editing ? <><X className="w-3.5 h-3.5" /><span>Cancel</span></> : <><Edit2 className="w-3.5 h-3.5 text-amber-600" /><span>Edit</span></>}
             </button>
           ) : (
             <div className="w-10" />

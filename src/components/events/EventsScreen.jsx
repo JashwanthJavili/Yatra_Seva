@@ -421,7 +421,7 @@ export default function EventsScreen() {
       <div className="flex flex-col min-h-screen bg-gradient-to-b from-[#FAF7F2] to-[#F3ECE0] text-stone-800 select-none font-['Poppins',sans-serif]">
 
         {/* ── Header ────────────────────────────────────────────────────── */}
-        <header className="shrink-0 pt-4 px-5 pb-3 flex items-center gap-3 bg-[#FAF7F2]/80 backdrop-blur-sm z-10">
+        <header className="shrink-0 pt-4 px-5 pb-3 flex items-center gap-3 bg-white/70 backdrop-blur-md border-b border-stone-200/60 sticky top-0 z-20">
           <button
             onClick={() => navigate('/dashboard')}
             className="w-10 h-10 rounded-full bg-white border border-stone-200 shadow-xs flex items-center justify-center text-stone-600 hover:text-amber-800 hover:bg-stone-50 active:scale-95 transition-all cursor-pointer shrink-0"
@@ -431,15 +431,15 @@ export default function EventsScreen() {
           </button>
 
           <div className="flex-1 min-w-0">
-            <h1 className="text-[18px] font-bold text-stone-900 tracking-tight leading-tight">Events</h1>
-            <p className="text-[12px] text-stone-500 leading-tight">Manage Yatra verification events</p>
+            <h1 className="text-[19px] font-bold text-stone-900 tracking-tight leading-tight">Yatra Events</h1>
+            <p className="text-[12px] text-stone-500 leading-tight">Schedule, coordinate &amp; verify</p>
           </div>
 
           <button
             onClick={() => setModal(true)}
-            className="shrink-0 inline-flex items-center gap-1.5 h-9 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-[12px] font-semibold shadow-sm transition-all cursor-pointer"
+            className="shrink-0 inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 active:scale-95 text-white text-[13px] font-semibold shadow-md shadow-amber-900/15 transition-all cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-4 h-4" />
             <span>New Event</span>
           </button>
         </header>
