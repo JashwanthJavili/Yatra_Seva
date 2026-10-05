@@ -43,32 +43,43 @@ function regRef(eventId, docId) {
 }
 
 /**
- * Intelligent helper to extract devotee name from sourceData.
- * Checks known aliases, generic name columns, first/last names, and non-empty text columns.
+ * Intelligent helper to extract devotee name from sourceData for any member index (0 to 3+).
+ * Handles:
+ *  - Primary (index 0): Name, Full Name, Devotee 1 Name, Participant Name, First/Last Name, etc.
+ *  - Group Members (index 1, 2, 3): Devotee 2/3/4 Name, Member 2/3/4, Name 2/3/4, Person 2/3/4, etc.
  */
 export function extractDevoteeName(index, sourceData) {
   if (!sourceData) return null;
   const entries = Object.entries(sourceData);
 
   if (index === 0) {
-    // 1. Exact / common alias match
+    // 1. Explicit primary / Devotee 1 match
     for (const [k, v] of entries) {
-      if (!v) continue;
+      if (!v || typeof v === 'boolean') continue;
+      const val = String(v).trim();
+      if (!val) continue;
       const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+
       if ([
         'fullname', 'name', 'devoteename', 'devotee', 'primarydevotee',
         'candidatename', 'participantname', 'applicantname', 'devoteefullname',
         'contactperson', 'personname', 'passengername', 'leadername', 'firstname',
+        'devotee1name', 'devotee1fullname', 'devotee1', 'member1name', 'member1',
+        'person1name', 'person1', 'name1', '1stdevoteename', 'primaryname',
       ].includes(norm)) {
-        return String(v).trim();
+        return val;
       }
     }
-    // 2. Any field containing name/devotee without [2-9]
+
+    // 2. Generic Name / Devotee column without numbers 2-9
     for (const [k, v] of entries) {
-      if (!v) continue;
+      if (!v || typeof v === 'boolean') continue;
+      const val = String(v).trim();
+      if (!val) continue;
       const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+
       if (
-        (norm.includes('name') || norm.includes('devotee') || norm.includes('candidate') || norm.includes('person')) &&
+        (norm.includes('name') || norm.includes('devotee') || norm.includes('candidate') || norm.includes('person') || norm.includes('member')) &&
         !/[2-9]/.test(norm) &&
         !norm.includes('total') &&
         !norm.includes('count') &&
@@ -76,20 +87,29 @@ export function extractDevoteeName(index, sourceData) {
         !norm.includes('event') &&
         !norm.includes('father') &&
         !norm.includes('mother') &&
-        !norm.includes('spouse')
+        !norm.includes('spouse') &&
+        !norm.includes('age') &&
+        !norm.includes('gender') &&
+        !norm.includes('phone') &&
+        !norm.includes('mobile')
       ) {
-        return String(v).trim();
+        return val;
       }
     }
+
     // 3. Combine First Name & Last Name if present
     const fn = entries.find(([k]) => k.toLowerCase().replace(/[^a-z0-9]/g, '').includes('firstname'))?.[1];
     const ln = entries.find(([k]) => k.toLowerCase().replace(/[^a-z0-9]/g, '').includes('lastname'))?.[1];
     if (fn || ln) {
-      return `${fn || ''} ${ln || ''}`.trim();
+      const combined = `${fn || ''} ${ln || ''}`.trim();
+      if (combined) return combined;
     }
-    // 4. Fallback to first non-empty text string that isn't ID/phone/email/date
+
+    // 4. Fallback: First reasonable non-empty text string
     for (const [k, v] of entries) {
       if (!v || typeof v !== 'string') continue;
+      const val = v.trim();
+      if (!val) continue;
       const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
       if (
         !norm.includes('id') &&
@@ -102,29 +122,114 @@ export function extractDevoteeName(index, sourceData) {
         !norm.includes('amount') &&
         !norm.includes('qr') &&
         !norm.includes('pass') &&
-        v.length > 1 &&
-        v.length < 50 &&
-        !/^\d+$/.test(v)
+        !norm.includes('age') &&
+        !norm.includes('gender') &&
+        val.length > 1 &&
+        val.length < 60 &&
+        !/^\d+$/.test(val)
       ) {
-        return v.trim();
+        return val;
       }
     }
   } else {
-    // Dependent devotees (index 1, 2, ...)
-    const n = index + 1;
+    // Group members 2, 3, 4 (index 1, 2, 3)
+    const n = index + 1; // 2, 3, 4
+    const ordinal = n === 2 ? '2nd' : n === 3 ? '3rd' : n === 4 ? '4th' : `${n}th`;
+
     for (const [k, v] of entries) {
-      if (!v) continue;
+      if (!v || typeof v === 'boolean') continue;
+      const val = String(v).trim();
+      if (!val) continue;
       const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (
-        (norm.includes(`devotee${n}`) || norm.includes(`member${n}`) || norm.includes(`person${n}`) || norm.includes(`name${n}`)) &&
-        !norm.includes('phone') && !norm.includes('age') && !norm.includes('gender')
-      ) {
-        return String(v).trim();
+
+      const matchesMember =
+        norm.includes(`devotee${n}`) ||
+        norm.includes(`member${n}`) ||
+        norm.includes(`person${n}`) ||
+        norm.includes(`name${n}`) ||
+        norm.includes(`participant${n}`) ||
+        norm.includes(`passenger${n}`) ||
+        norm.includes(`guest${n}`) ||
+        norm.includes(`${ordinal}devotee`) ||
+        norm.includes(`${ordinal}member`) ||
+        norm.includes(`${ordinal}person`);
+
+      const isNotMeta =
+        !norm.includes('phone') &&
+        !norm.includes('mobile') &&
+        !norm.includes('age') &&
+        !norm.includes('gender') &&
+        !norm.includes('id') &&
+        !norm.includes('proof');
+
+      if (matchesMember && isNotMeta && val.length > 1) {
+        return val;
       }
     }
   }
 
   return null;
+}
+
+/**
+ * Robust helper to calculate total devotees (1 to 4+) in a group registration.
+ */
+export function resolveTotalDevotees(sourceData, systemData) {
+  if (Array.isArray(systemData?.devotees) && systemData.devotees.length > 0) {
+    return systemData.devotees.length;
+  }
+  if (!sourceData) return 1;
+
+  const entries = Object.entries(sourceData);
+
+  // 1. Explicit count column in Excel (e.g. "Total Devotees", "Number of Members", "No of Pax", etc.)
+  const countEntry = entries.find(([k, v]) => {
+    if (v === null || v === undefined || v === '') return false;
+    const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return (
+      norm.includes('totaldevotee') ||
+      norm.includes('totalmember') ||
+      norm.includes('totalperson') ||
+      norm.includes('noofdevotee') ||
+      norm.includes('numberofdevotee') ||
+      norm.includes('noofperson') ||
+      norm.includes('noofmember') ||
+      norm.includes('devoteecount') ||
+      norm.includes('membercount') ||
+      norm.includes('totalpax') ||
+      norm.includes('paxcount') ||
+      norm === 'devotees' ||
+      norm === 'members' ||
+      norm === 'persons' ||
+      norm === 'count'
+    );
+  });
+
+  if (countEntry && !isNaN(Number(countEntry[1])) && Number(countEntry[1]) > 0) {
+    return Math.min(Math.max(1, Math.floor(Number(countEntry[1]))), 10);
+  }
+
+  // 2. Detect how many non-empty devotee names exist (check up to 6 members)
+  let maxFound = 1;
+  for (let i = 2; i <= 6; i++) {
+    const hasName = extractDevoteeName(i - 1, sourceData);
+    if (hasName) {
+      maxFound = i;
+    }
+  }
+  if (maxFound > 1) return maxFound;
+
+  // 3. Detect any numbered column header (e.g., devotee2, member3, person4) with non-empty values
+  let maxNumbered = 1;
+  for (const [k, v] of entries) {
+    if (v === null || v === undefined || String(v).trim() === '') continue;
+    const match = k.match(/(?:devotee|person|member|passenger|participant|name|guest)[\s_-]*([2-9]|\d{2})/i);
+    if (match && match[1]) {
+      const num = parseInt(match[1], 10);
+      if (num > maxNumbered && num <= 10) maxNumbered = num;
+    }
+  }
+  return maxNumbered;
 }
 
 // ─── Atomic devotee verification ─────────────────────────────────────────────

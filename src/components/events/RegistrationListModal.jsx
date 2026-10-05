@@ -14,7 +14,7 @@ import {
   Loader2, AlertCircle, CheckCircle2, User, Phone,
 } from 'lucide-react';
 import { getRegistrations } from '../../services/registrationService';
-import { extractDevoteeName } from '../../services/verificationService';
+import { extractDevoteeName, resolveTotalDevotees } from '../../services/verificationService';
 import { REGISTRATION_STATUS } from '../../types/registration';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -86,52 +86,7 @@ function getContactNumber(sourceData) {
   return match && match[1] ? String(match[1]) : null;
 }
 
-/** Resolves total devotees count intelligently from sourceData or systemData */
-function resolveTotalDevotees(sourceData, sysData) {
-  if (Array.isArray(sysData?.devotees) && sysData.devotees.length > 0) {
-    return sysData.devotees.length;
-  }
-  if (!sourceData) return 1;
 
-  const entries = Object.entries(sourceData);
-
-  // 1. Check explicit count columns
-  const countEntry = entries.find(([k, v]) => {
-    if (v === null || v === undefined || v === '') return false;
-    const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
-    return (
-      norm.includes('totaldevotee') ||
-      norm.includes('totalmember') ||
-      norm.includes('totalperson') ||
-      norm.includes('noofdevotee') ||
-      norm.includes('numberofdevotee') ||
-      norm.includes('noofperson') ||
-      norm.includes('devoteecount') ||
-      norm.includes('membercount') ||
-      norm === 'devotees' ||
-      norm === 'persons' ||
-      norm === 'members'
-    );
-  });
-  if (countEntry && !isNaN(Number(countEntry[1])) && Number(countEntry[1]) > 0) {
-    return Number(countEntry[1]);
-  }
-
-  // 2. Check numbered devotee headers (e.g. Devotee 2, Person 3)
-  let maxNumbered = 1;
-  for (const [k, v] of entries) {
-    if (v === null || v === undefined || v === '') continue;
-    const match = k.match(/(?:devotee|person|member|passenger|participant|name)[\s_-]*([2-9]|\d{2})/i);
-    if (match && match[1]) {
-      const num = parseInt(match[1], 10);
-      if (num > maxNumbered && num <= 50) {
-        maxNumbered = num;
-      }
-    }
-  }
-
-  return maxNumbered;
-}
 
 // ─── Registration Item Card ───────────────────────────────────────────────────
 

@@ -531,11 +531,62 @@ export default function RegistrationDetailsScreen() {
             <SourceDataFields sourceData={sourceData} qrIdentifierColumn={qrCol} />
           </div>
 
-          {/* Devotee verification cards */}
+          {/* Group Overview Banner & Progress */}
+          <div className="bg-white border border-stone-200/90 rounded-2xl p-4 shadow-2xs">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-[15px] shrink-0 border border-amber-200">
+                  {totalDevotees}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-[14px] font-bold text-stone-900 leading-tight">
+                    {totalDevotees > 1 ? `Group of ${totalDevotees} Devotees` : 'Single Devotee Registration'}
+                  </h3>
+                  <p className="text-[11px] text-stone-500 mt-0.5">
+                    {devoteeStates.filter((d) => d.status === REGISTRATION_STATUS.VERIFIED).length === totalDevotees
+                      ? 'All members verified'
+                      : `${devoteeStates.filter((d) => d.status === REGISTRATION_STATUS.VERIFIED).length} of ${totalDevotees} verified`}
+                  </p>
+                </div>
+              </div>
+
+              <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border shrink-0 ${
+                devoteeStates.filter((d) => d.status === REGISTRATION_STATUS.VERIFIED).length === totalDevotees
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                  : devoteeStates.filter((d) => d.status === REGISTRATION_STATUS.VERIFIED).length > 0
+                    ? 'bg-sky-100 text-sky-800 border-sky-200'
+                    : 'bg-amber-100 text-amber-800 border-amber-200'
+              }`}>
+                {devoteeStates.filter((d) => d.status === REGISTRATION_STATUS.VERIFIED).length} / {totalDevotees} Verified
+              </span>
+            </div>
+
+            {/* Progress bar */}
+            <div className="w-full h-2 rounded-full bg-stone-100 overflow-hidden mt-3">
+              <div
+                className="h-full bg-emerald-500 transition-all duration-300 rounded-full"
+                style={{
+                  width: `${(devoteeStates.filter((d) => d.status === REGISTRATION_STATUS.VERIFIED).length / totalDevotees) * 100}%`,
+                }}
+              />
+            </div>
+
+            {totalDevotees > 1 && (
+              <p className="text-[11px] text-amber-900 bg-amber-50/80 p-2.5 rounded-xl border border-amber-200/60 mt-3 leading-relaxed">
+                ℹ️ Verify each member individually as they present themselves at the desk.
+              </p>
+            )}
+          </div>
+
+          {/* Individual devotee verification cards */}
           <div>
-            <p className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider mb-2.5">
-              {totalDevotees > 1 ? `Devotees (${totalDevotees})` : 'Devotee Verification'}
-            </p>
+            <div className="flex items-center justify-between mb-2.5">
+              <p className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
+                {totalDevotees > 1 ? `Group Members (1 to ${totalDevotees})` : 'Devotee Verification'}
+              </p>
+              <span className="text-[11px] text-stone-400">Click card to expand details</span>
+            </div>
+
             <div className="space-y-3">
               {Array.from({ length: Math.max(totalDevotees, devoteeStates.length) }, (_, i) => (
                 <DevoteeCard
