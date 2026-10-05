@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+    /* ==========================================================================
+       HERO IMAGE POSITIONING & MOVEMENT CONTROLS
+       - Translate X: positive values (e.g. 25px, 40px) move the image RIGHT.
+                      negative values (e.g. -20px) move the image LEFT.
+       - Translate Y: negative values (e.g. -70px, -90px) move the image UP.
+                      positive values (e.g. +20px) move the image DOWN.
+       - Scale: (e.g. 1.15, 1.2) enlarges image so shifting leaves no empty borders.
+       ========================================================================== */
+    --hero-image-translate-x: 25px;
+    --hero-image-translate-y: -70px;
+    --hero-image-scale: 1.15;
+    --hero-image-position-y: top;
+  }
+
+  html,
+  body {
+    font-family: var(--font-sans);
+    background-color: #F8F5EE;
+    color: #292524;
+    -webkit-tap-highlight-color: transparent;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+  }
+}
+
+/* Smooth forward nudge animation for the Continue button arrow */
+@keyframes arrowNudge {
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  50% {
+    transform: translateX(6px);
+  }
+}
+
+.animate-arrow-nudge {
+  animation: arrowNudge 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(217, 119, 6, 0.2);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(217, 119, 6, 0.4);
+}
